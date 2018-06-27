@@ -281,6 +281,7 @@ bool FlagValue::ParseFrom(const char* value) {
     return false;   // didn't match a legal input
 
   } else if (type_ == FV_STRING) {
+printf("%s:%d: >>>>>>>>>>>>>>> %s\n", __FUNCTION__, __LINE__, value);
     SET_VALUE_AS(string, value);
     return true;
   }
@@ -428,6 +429,7 @@ FlagValue* FlagValue::New() const {
 }
 
 void FlagValue::CopyFrom(const FlagValue& x) {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   assert(type_ == x.type_);
   switch (type_) {
     case FV_BOOL:   SET_VALUE_AS(bool, OTHER_VALUE_AS(x, bool));      break;
@@ -435,9 +437,18 @@ void FlagValue::CopyFrom(const FlagValue& x) {
     case FV_INT64:  SET_VALUE_AS(int64, OTHER_VALUE_AS(x, int64));    break;
     case FV_UINT64: SET_VALUE_AS(uint64, OTHER_VALUE_AS(x, uint64));  break;
     case FV_DOUBLE: SET_VALUE_AS(double, OTHER_VALUE_AS(x, double));  break;
-    case FV_STRING: SET_VALUE_AS(string, OTHER_VALUE_AS(x, string));  break;
+    case FV_STRING:
+/*workaround!?*/ *reinterpret_cast<int*>(value_buffer_) = *reinterpret_cast<int*>(x.value_buffer_);
+printf("%s:%d: >>>>>>>>>>>>>>>> %s\n", __FUNCTION__, __LINE__, *reinterpret_cast<int*>(value_buffer_));
+    SET_VALUE_AS(string, OTHER_VALUE_AS(x, string));  break;
+//printf("%s:%d: %p?=%p %p?=%p\n", __FUNCTION__, __LINE__, value_buffer_, reinterpret_cast<string*>(value_buffer_), x.value_buffer_, reinterpret_cast<string*>(x.value_buffer_));
+//printf("%s:%d: %p ?= %p\n", __FUNCTION__, __LINE__, value_buffer_, reinterpret_cast<string*>(value_buffer_));
+//printf("%s:%d: %p ?= %p\n", __FUNCTION__, __LINE__, x.value_buffer_, reinterpret_cast<string*>(x.value_buffer_));
+ //*reinterpret_cast<string*>(value_buffer_) = *reinterpret_cast<string*>(x.value_buffer_);
+ break;
     default: assert(false);  // unknown type
   }
+printf("%s:%d\n", __FUNCTION__, __LINE__);
 }
 
 int FlagValue::ValueSize() const {
@@ -696,6 +707,7 @@ class FlagRegistryLock {
 
 
 void FlagRegistry::RegisterFlag(CommandLineFlag* flag) {
+printf("%s:%d: %s\n", __FUNCTION__, __LINE__, flag->name());
   Lock();
   pair<FlagIterator, bool> ins =
     flags_.insert(pair<const char*, CommandLineFlag*>(flag->name(), flag));
@@ -798,8 +810,11 @@ CommandLineFlag* FlagRegistry::SplitArgumentLocked(const char* arg,
 bool TryParseLocked(const CommandLineFlag* flag, FlagValue* flag_value,
                     const char* value, string* msg) {
   // Use tenative_value, not flag_value, until we know value is valid.
+printf("%s:%d: >>>>>>>>>>>>>>> %s\n", __FUNCTION__, __LINE__, value);
   FlagValue* tentative_value = flag_value->New();
+printf("%s:%d ####\n", __FUNCTION__, __LINE__);
   if (!tentative_value->ParseFrom(value)) {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     if (msg) {
       StringAppendF(msg,
                     "%sillegal value '%s' specified for %s flag '%s'\n",
@@ -809,6 +824,7 @@ bool TryParseLocked(const CommandLineFlag* flag, FlagValue* flag_value,
     delete tentative_value;
     return false;
   } else if (!flag->Validate(*tentative_value)) {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     if (msg) {
       StringAppendF(msg,
           "%sfailed validation of new value '%s' for flag '%s'\n",
@@ -818,12 +834,16 @@ bool TryParseLocked(const CommandLineFlag* flag, FlagValue* flag_value,
     delete tentative_value;
     return false;
   } else {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     flag_value->CopyFrom(*tentative_value);
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     if (msg) {
       StringAppendF(msg, "%s set to %s\n",
                     flag->name(), flag_value->ToString().c_str());
     }
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     delete tentative_value;
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     return true;
   }
 }
@@ -832,9 +852,12 @@ bool FlagRegistry::SetFlagLocked(CommandLineFlag* flag,
                                  const char* value,
                                  FlagSettingMode set_mode,
                                  string* msg) {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   flag->UpdateModifiedBit();
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   switch (set_mode) {
     case SET_FLAGS_VALUE: {
+printf("%s:%d: %p %p\n", __FUNCTION__, __LINE__, flag, flag->current_);
       // set or modify the flag's value
       if (!TryParseLocked(flag, flag->current_, value, msg))
         return false;
@@ -842,6 +865,7 @@ bool FlagRegistry::SetFlagLocked(CommandLineFlag* flag,
       break;
     }
     case SET_FLAG_IF_DEFAULT: {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
       // set the flag's value, but only if it hasn't been set by someone else
       if (!flag->modified_) {
         if (!TryParseLocked(flag, flag->current_, value, msg))
@@ -854,6 +878,7 @@ bool FlagRegistry::SetFlagLocked(CommandLineFlag* flag,
       break;
     }
     case SET_FLAGS_DEFAULT: {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
       // modify the flag's default-value
       if (!TryParseLocked(flag, flag->defvalue_, value, msg))
         return false;
@@ -869,6 +894,7 @@ bool FlagRegistry::SetFlagLocked(CommandLineFlag* flag,
       return false;
     }
   }
+printf("%s:%d\n", __FUNCTION__, __LINE__);
 
   return true;
 }
@@ -1010,10 +1036,13 @@ uint32 CommandLineFlagParser::ParseNewCommandLineFlags(int* argc, char*** argv,
 
   int first_nonopt = *argc;        // for non-options moved to the end
 
+printf("%s:%d: %d %s\n", __FUNCTION__, __LINE__, first_nonopt, program_name);
+
   registry_->Lock();
   for (int i = 1; i < first_nonopt; i++) {
     char* arg = (*argv)[i];
 
+printf("%s:%d: %s\n", __FUNCTION__, __LINE__, arg);
     // Like getopt(), we permute non-option flags to be at the end.
     if (arg[0] != '-' ||           // must be a program argument
         (arg[0] == '-' && arg[1] == '\0')) {  // "-" is an argument, not a flag
@@ -1045,6 +1074,7 @@ uint32 CommandLineFlagParser::ParseNewCommandLineFlags(int* argc, char*** argv,
       continue;
     }
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     if (value == NULL) {
       // Boolean options are always assigned a value by SplitArgumentLocked()
       assert(strcmp(flag->type_name(), "bool") != 0);
@@ -1082,11 +1112,14 @@ uint32 CommandLineFlagParser::ParseNewCommandLineFlags(int* argc, char*** argv,
       }
     }
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     // TODO(csilvers): only set a flag if we hadn't set it before here
     ProcessSingleOptionLocked(flag, value, SET_FLAGS_VALUE);
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   }
   registry_->Unlock();
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   if (remove_flags) {   // Fix up argc and argv by removing command line flags
     (*argv)[first_nonopt-1] = (*argv)[0];
     (*argv) += (first_nonopt-1);
@@ -1094,6 +1127,7 @@ uint32 CommandLineFlagParser::ParseNewCommandLineFlags(int* argc, char*** argv,
     first_nonopt = 1;   // because we still don't count argv[0]
   }
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   logging_is_probably_set_up = true;   // because we've parsed --logdir, etc.
 
   return first_nonopt;
@@ -1162,11 +1196,14 @@ string CommandLineFlagParser::ProcessFromenvLocked(const string& flagval,
 string CommandLineFlagParser::ProcessSingleOptionLocked(
     CommandLineFlag* flag, const char* value, FlagSettingMode set_mode) {
   string msg;
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   if (value && !registry_->SetFlagLocked(flag, value, set_mode, &msg)) {
+printf("%s:%d\n", __FUNCTION__, __LINE__);
     error_flags_[flag->name()] = msg;
     return "";
   }
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   // The recursive flags, --flagfile and --fromenv and --tryfromenv,
   // must be dealt with as soon as they're seen.  They will emit
   // messages of their own.
@@ -1180,6 +1217,7 @@ string CommandLineFlagParser::ProcessSingleOptionLocked(
   } else if (strcmp(flag->name(), "tryfromenv") == 0) {
     msg += ProcessFromenvLocked(FLAGS_tryfromenv, set_mode, false);
   }
+printf("%s:%d\n", __FUNCTION__, __LINE__);
 
   return msg;
 }
@@ -1881,7 +1919,7 @@ static uint32 ParseCommandLineFlagsInternal(int* argc, char*** argv,
 
   FlagRegistry* const registry = FlagRegistry::GlobalRegistry();
   CommandLineFlagParser parser(registry);
-
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   // When we parse the commandline flags, we'll handle --flagfile,
   // --tryfromenv, etc. as we see them (since flag-evaluation order
   // may be important).  But sometimes apps set FLAGS_tryfromenv/etc.
@@ -1894,17 +1932,22 @@ static uint32 ParseCommandLineFlagsInternal(int* argc, char*** argv,
   parser.ProcessFromenvLocked(FLAGS_tryfromenv, SET_FLAGS_VALUE, false);
   registry->Unlock();
 
+printf("%s:%d: %d %s\n", __FUNCTION__, __LINE__, *argc, *argv[0]);
   // Now get the flags specified on the commandline
   const int r = parser.ParseNewCommandLineFlags(argc, argv, remove_flags);
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   if (do_report)
     HandleCommandLineHelpFlags();   // may cause us to exit on --help, etc.
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   // See if any of the unset flags fail their validation checks
   parser.ValidateAllFlags();
 
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   if (parser.ReportErrors())        // may cause us to exit on illegal flags
     gflags_exitfunc(1);
+printf("%s:%d\n", __FUNCTION__, __LINE__);
   return r;
 }
 
